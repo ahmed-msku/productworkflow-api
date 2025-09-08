@@ -20,8 +20,8 @@ The project is about to manage Product entities with CRUD operations and a file 
 
 ### Clone Repository
 
-\> git clone <https://github.com/yourusername/MyApiProject.git>  
-\> cd MyApiProject
+\> git clone <https://github.com/ahmed-msku/productworkflow-api.git>  
+\> cd productworkflow-api
 
 ### Configure Database
 
