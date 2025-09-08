@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "6gF4c+6Rq13+48D4VkYHP0QM9iR93TFf47Pw4sSng4g=",
+  "Source": "ProductWorkflow.API",
+  "BasePath": "_content/ProductWorkflow.API",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}
