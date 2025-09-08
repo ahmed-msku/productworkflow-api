@@ -6,5 +6,7 @@ namespace ProductWorkflow.API.Repositories.Interfaces
     {
         Task<ProcessingJob> AddJob(ProcessingJob job);
         Task<ProcessingJob> GetJobAsync(Guid jobId);
+        Task<ProcessingJob?> GetPendingJobAsync();
+        Task UpdateJob(ProcessingJob job);
     }
 }

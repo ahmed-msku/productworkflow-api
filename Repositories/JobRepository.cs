@@ -29,5 +29,22 @@ namespace ProductWorkflow.API.Repositories
             return await dbContext.ProcessingJob.FindAsync(jobId);
         }
 
+        public async Task<ProcessingJob?> GetPendingJobAsync()
+        {
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await dbContext.ProcessingJob
+                    .Where(j => j.Status == "Pending")
+                    .OrderBy(j => j.CreatedAt)
+                    .FirstOrDefaultAsync();
+        }
+
+        public async Task UpdateJob(ProcessingJob job)
+        {
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            dbContext.ProcessingJob.Update(job);
+            await dbContext.SaveChangesAsync();
+        }
+
     }
 }

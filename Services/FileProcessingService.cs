@@ -2,42 +2,42 @@
 using System.Threading.Channels;
 using ProductWorkflow.Data;
 using Microsoft.EntityFrameworkCore;
+using ProductWorkflow.API.Repositories.Interfaces;
 
 namespace ProductWorkflow.API.Services
 {
     public class FileProcessingService : BackgroundService
     {
-        private readonly IServiceScopeFactory _scopeFactory;
+        private readonly IProductRepository _productRepository;
+        private readonly IJobRepository _jobRepository;
         private readonly ILogger<FileProcessingService> _logger;
         private const int ERRORS_LIMIT = 10;
         private const int BATCH_SIZE = 10;
+        private const int SERVICE_DELAY = 2000; // 2s delay
+        private const int TASK_DELAY = 3500;    // 3.5s as per requirement
 
-        public FileProcessingService(IServiceScopeFactory scopeFactory, ILogger<FileProcessingService> logger)
+        public FileProcessingService(IProductRepository productRepository, IJobRepository jobRepository, ILogger<FileProcessingService> logger)
         {
-            _scopeFactory = scopeFactory;
+            _productRepository = productRepository;
+            _jobRepository = jobRepository;
             _logger = logger;
         }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        protected override async Task ExecuteAsync(CancellationToken cancellationToken)
         {
-            while (!stoppingToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                using var scope = _scopeFactory.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-                var job = await db.ProcessingJob
-                    .Where(j => j.Status == "Pending")
-                    .OrderBy(j => j.CreatedAt)
-                    .FirstOrDefaultAsync(stoppingToken);
+                var job = await _jobRepository.GetPendingJobAsync();
 
                 if (job == null)
                 {
-                    await Task.Delay(2000, stoppingToken);
+                    await Task.Delay(SERVICE_DELAY, cancellationToken);
                     continue;
                 }
 
                 job.Status = "Processing";
-                await db.SaveChangesAsync(stoppingToken);
+                await _jobRepository.UpdateJob(job);
+                _logger.LogInformation("Job processing started");
 
                 var channel = Channel.CreateBounded<Product>(100);
                 int totalAdded = 0;
@@ -64,7 +64,7 @@ namespace ProductWorkflow.API.Services
                             if (product != null)
                             {
                                 totalAdded++;
-                                await channel.Writer.WriteAsync(product, stoppingToken);
+                                await channel.Writer.WriteAsync(product, cancellationToken);
                             }
                             else
                             {
@@ -81,7 +81,7 @@ namespace ProductWorkflow.API.Services
                         }
 
                         channel.Writer.Complete();
-                    }, stoppingToken);
+                    }, cancellationToken);
 
                     // Consumer Tasks: Start exactly two threads to process
                     var consumers = new List<Task>();
@@ -89,30 +89,27 @@ namespace ProductWorkflow.API.Services
                     {
                         consumers.Add(Task.Run(async () =>
                         {
-                            using var consumerScope = _scopeFactory.CreateScope();
-                            var consumerDb = consumerScope.ServiceProvider.GetRequiredService<AppDbContext>();
                             var batch = new List<Product>();
 
-                            await foreach (var product in channel.Reader.ReadAllAsync(stoppingToken))
+                            await foreach (var product in channel.Reader.ReadAllAsync(cancellationToken))
                             {
-                                await Task.Delay(3500, stoppingToken); // As per requirement
+                                await Task.Delay(TASK_DELAY, cancellationToken); // As per requirement
 
                                 batch.Add(product);
 
                                 if (batch.Count >= BATCH_SIZE) // Bulk insert
                                 {
-                                    consumerDb.Products.AddRange(batch);
-                                    await consumerDb.SaveChangesAsync(stoppingToken);
+                                    await _productRepository.AddBatch(batch);
                                     batch.Clear();
+                                    _logger.LogInformation("Products added");
                                 }
                             }
 
                             if (batch.Any())
                             {
-                                consumerDb.Products.AddRange(batch);
-                                await consumerDb.SaveChangesAsync(stoppingToken);
+                                await _productRepository.AddBatch(batch);
                             }
-                        }, stoppingToken));
+                        }, cancellationToken));
                     }
 
                     await producer;
@@ -123,14 +120,15 @@ namespace ProductWorkflow.API.Services
                     job.TotalAdded = totalAdded;
                     job.TotalFailed = totalErrors;
 
-                    await db.SaveChangesAsync(stoppingToken);
+                    await _jobRepository.UpdateJob(job);
+                    _logger.LogInformation("Job completed");
                 }
                 catch (Exception ex)
                 {
                     job.Status = "Failed";
                     job.ErrorMessage = ex.Message;
                     job.CompletedAt = DateTime.Now;
-                    await db.SaveChangesAsync(stoppingToken);
+                    await _jobRepository.UpdateJob(job);
                     _logger.LogError(ex, "Error processing job {JobId}", job.Id);
                 }
             }
