@@ -15,7 +15,7 @@ The project is about to manage Product entities with CRUD operations and a file 
 ### Prerequisites
 
 - .NET 8 (or later) runtime
-- Any SQL Database (local/cloud)
+- SQL Server (local/cloud)
 - IDE: Visual Studio / VS Code
 
 ### Clone Repository
